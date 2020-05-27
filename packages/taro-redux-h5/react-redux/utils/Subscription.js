@@ -1,39 +1,44 @@
+import { getBatch } from './batch'
+
 // encapsulates the subscription logic for connecting a component to the redux store, as
 // well as nesting subscriptions of descendant components, so that we can ensure the
 // ancestor components re-render before descendants
 
 const CLEARED = null
-const nullListeners = { notify() {} }
+const nullListeners = { notify () {} }
 
-function createListenerCollection() {
+function createListenerCollection () {
+  const batch = getBatch()
   // the current/next pattern is copied from redux's createStore code.
   // TODO: refactor+expose that code to be reusable here?
   let current = []
   let next = []
 
   return {
-    clear() {
+    clear () {
       next = CLEARED
       current = CLEARED
     },
 
-    notify() {
-      const listeners = current = next
-      for (let i = 0; i < listeners.length; i++) {
-        listeners[i]()
-      }
+    notify () {
+      const listeners = (current = next)
+      batch(() => {
+        for (let i = 0; i < listeners.length; i++) {
+          listeners[i]()
+        }
+      })
     },
 
-    get() {
+    get () {
       return next
     },
 
-    subscribe(listener) {
+    subscribe (listener) {
       let isSubscribed = true
       if (next === current) next = current.slice()
       next.push(listener)
 
-      return function unsubscribe() {
+      return function unsubscribe () {
         if (!isSubscribed || current === CLEARED) return
         isSubscribed = false
 
@@ -45,38 +50,45 @@ function createListenerCollection() {
 }
 
 export default class Subscription {
-  constructor(store, parentSub, onStateChange) {
+  constructor (store, parentSub) {
     this.store = store
     this.parentSub = parentSub
-    this.onStateChange = onStateChange
     this.unsubscribe = null
     this.listeners = nullListeners
+
+    this.handleChangeWrapper = this.handleChangeWrapper.bind(this)
   }
 
-  addNestedSub(listener) {
+  addNestedSub (listener) {
     this.trySubscribe()
     return this.listeners.subscribe(listener)
   }
 
-  notifyNestedSubs() {
+  notifyNestedSubs () {
     this.listeners.notify()
   }
 
-  isSubscribed() {
+  handleChangeWrapper () {
+    if (this.onStateChange) {
+      this.onStateChange()
+    }
+  }
+
+  isSubscribed () {
     return Boolean(this.unsubscribe)
   }
 
-  trySubscribe() {
+  trySubscribe () {
     if (!this.unsubscribe) {
       this.unsubscribe = this.parentSub
-        ? this.parentSub.addNestedSub(this.onStateChange)
-        : this.store.subscribe(this.onStateChange)
- 
+        ? this.parentSub.addNestedSub(this.handleChangeWrapper)
+        : this.store.subscribe(this.handleChangeWrapper)
+
       this.listeners = createListenerCollection()
     }
   }
 
-  tryUnsubscribe() {
+  tryUnsubscribe () {
     if (this.unsubscribe) {
       this.unsubscribe()
       this.unsubscribe = null

@@ -1,1 +1,1 @@
-export { Provider, connect, connectAdvanced } from '../react-redux'
+export { Provider, useSelector, useDispatch, connect, connectAdvanced } from '../react-redux'
